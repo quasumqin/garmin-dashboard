@@ -103,6 +103,18 @@ Copy the whole folder to `~/.claude/skills/garmin-dashboard/`, then ask Claude
 "sync my Garmin data" or "build my Garmin dashboard". `SKILL.md` guides the first setup.
 Without Claude Code, just run `python3 setup.py`.
 
+## Use with AI agents
+
+This is a plain CLI, so any agent with shell access can run it. The repository includes:
+
+- `AGENTS.md` — instructions for Codex, DeepSeek harness, Cursor and generic agents
+- `CLAUDE.md` — Claude Code specifics
+- `SKILL.md` — Claude Code skill entry (install the folder under `~/.claude/skills/garmin-dashboard/`)
+
+A human should run `python3 setup.py` once so the API key is entered locally. After that an agent
+can run `garmin.py sync` and `garmin.py dashboard`. Never paste the key into chat. No MCP server
+is included; the CLI is the interface.
+
 ## Caveats
 
 - **Training load** is Garmin `activityTrainingLoad`, suitable for relative trends only; it is not

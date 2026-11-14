@@ -100,6 +100,18 @@ GARMIN_REGION=cn python3 garmin.py sync --days 30
 “同步我的 Garmin 数据”或“生成 Garmin 看板”即可。`SKILL.md` 会引导首次配置。
 不用 Claude Code 的话，直接按上面的 `python3 setup.py` 用。
 
+## 配合 AI agent 使用
+
+这是纯命令行工具，任何有 shell 权限的 agent 都能跑。仓库里有：
+
+- `AGENTS.md` —— 给 Codex、DeepSeek harness、Cursor 等通用 agent 的说明
+- `CLAUDE.md` —— Claude Code 专用
+- `SKILL.md` —— Claude Code skill 入口（把整个目录放到 `~/.claude/skills/garmin-dashboard/`）
+
+首次配置请人来跑 `python3 setup.py`，API Key 用隐藏输入、只存本机。之后 agent 可以直接跑
+`garmin.py sync` 和 `garmin.py dashboard`。不要把 Key 贴进聊天。没有内置 MCP server，
+CLI 就是调用接口。
+
 ## 口径与限制
 
 - **训练负荷**用 Garmin 的 `activityTrainingLoad`，只适合看相对趋势，不能和功率 TSS 的绝对值比较。

@@ -8,6 +8,7 @@ description: 同步 Garmin Connect 个人 API 数据（活动/睡眠/HRV/体重�
 **中文 | [English](SKILL.md)**
 
 本目录既是独立 Python 项目，也是 Claude Code skill。数据只在本机，不上传。
+其他 agent 看 `AGENTS.md`；Claude Code 的项目规则看 `CLAUDE.md`。
 
 ## 首次使用
 

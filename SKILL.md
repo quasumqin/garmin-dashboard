@@ -8,6 +8,7 @@ description: Sync Garmin Connect Personal API data (activities, sleep, HRV, weig
 **English | [中文](SKILL.zh-CN.md)**
 
 This folder is both a standalone Python project and a Claude Code skill. Data stays local.
+For non-Claude agents, see `AGENTS.md`; for Claude Code project rules, see `CLAUDE.md`.
 
 ## First run
 
