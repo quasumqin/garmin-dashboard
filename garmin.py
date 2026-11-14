@@ -20,6 +20,15 @@ import config
 import db
 
 
+def _m(zh, en):
+    """CLI message: English when GARMIN_LANG=en."""
+    return en if config.LANG == "en" else zh
+
+
+def _pl(n, one, many):
+    return one if n == 1 else many
+
+
 # ---------------------------------------------------------------- 客户端
 class ApiError(RuntimeError):
     pass
@@ -279,7 +288,8 @@ def sync(days=90, with_fit=False):
     today = date.today()
     start = today - timedelta(days=days - 1)
     s, e = start.isoformat(), today.isoformat()
-    print(f"[sync] 区间 {s} → {e}（{days} 天），端点 {config.BASE}")
+    print(_m(f"[sync] 区间 {s} → {e}（{days} 天），端点 {config.BASE}",
+              f"[sync] range {s} → {e} ({days} {_pl(days, 'day', 'days')}), endpoint {config.BASE}"))
 
     def run(label, path, parser, table, chunk=None):
         try:
@@ -287,30 +297,31 @@ def sync(days=90, with_fit=False):
             rows = parser(data) if data else []
             n = db.upsert(conn, table, rows) if table else 0
             db.log_fetch(conn, path, 200, ms, n)
-            print(f"  ✓ {label:<10} {n:>4} 行  {ms}ms")
+            print(_m(f"  ✓ {label:<10} {n:>4} 行  {ms}ms",
+                      f"  ✓ {label:<10} {n:>4} {_pl(n, 'row', 'rows')}  {ms}ms"))
             return data
         except ApiError as ex:
             db.log_fetch(conn, path, 0, 0, 0, str(ex)[:300])
-            print(f"  ✗ {label:<10} {ex}")
+            print(_m(f"  ✗ {label:<10} {ex}", f"  ✗ {label:<10} {ex}"))
             return None
         finally:
             time.sleep(config.THROTTLE_SEC)
 
     # 1) 每日汇总（一次拿全，90 天实测可一次返回）
-    data = run("每日汇总", f"/usersummary-service/v2/dailysummaries?startDate={s}&endDate={e}",
+    data = run(_m("每日汇总", "Daily summary"), f"/usersummary-service/v2/dailysummaries?startDate={s}&endDate={e}",
                lambda d: parse_daily(d.get("data", [])), "daily")
     if data is None and days > 30:                       # 太长就按月切
-        print("  · 退回按 30 天分段")
+        print(_m("  · 退回按 30 天分段", "  · falling back to 30-day chunks"))
         cur = start
         while cur <= today:
             end = min(cur + timedelta(days=29), today)
-            run(f"每日汇总{cur:%m-%d}",
+            run(_m(f"每日汇总{cur:%m-%d}", f"Daily {cur:%m-%d}"),
                 f"/usersummary-service/v2/dailysummaries?startDate={cur.isoformat()}&endDate={end.isoformat()}",
                 lambda d: parse_daily(d.get("data", [])), "daily")
             cur = end + timedelta(days=1)
 
     # 2) 睡眠：只能按天取，慢（单请求约 3s），4 线程并发
-    print("[sleep] 逐日拉取（4 线程）")
+    print(_m("[sleep] 逐日拉取（4 线程）", "[sleep] fetching day by day (4 threads)"))
     n_sleep, n_fail = 0, 0
     lock = threading.Lock()
 
@@ -332,7 +343,8 @@ def sync(days=90, with_fit=False):
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         list(pool.map(fetch_sleep, list(daterange(start, today))))
-    print(f"  ✓ 睡眠 {n_sleep} 天" + (f"（失败 {n_fail}）" if n_fail else ""))
+    print(_m(f"  ✓ 睡眠 {n_sleep} 天" + (f"（失败 {n_fail}）" if n_fail else ""),
+              f"  ✓ sleep {n_sleep} {_pl(n_sleep, 'day', 'days')}" + (f" ({n_fail} failed)" if n_fail else "")))
 
     # 3) HRV / 体重（支持区间）
     run("HRV", f"/hrv-service/hrv/daily/{s}/{e}",
@@ -342,19 +354,20 @@ def sync(days=90, with_fit=False):
         rows = parse_weight(data or [])
         n = db.upsert(conn, "weight", rows, pk=["calendar_date", "weight_g"])
         db.log_fetch(conn, "weight/all", 200, ms, n)
-        print(f"  ✓ {'体重':<10} {n:>4} 行  {ms}ms")
+        print(_m(f"  ✓ {'体重':<10} {n:>4} 行  {ms}ms",
+                  f"  ✓ {'Weight':<10} {n:>4} {_pl(n, 'row', 'rows')}  {ms}ms"))
     except ApiError as ex:
-        print(f"  ✗ {'体重':<10} {ex}")
+        print(_m(f"  ✗ {'体重':<10} {ex}", f"  ✗ {'Weight':<10} {ex}"))
 
     # 4) 活动（分页）
-    print("[activity] 分页拉取")
+    print(_m("[activity] 分页拉取", "[activity] fetching pages"))
     offset, total = 0, 0
     while True:
         try:
             data, ms = api.get(
                 f"/activitylist-service/activities/search/activities?start={offset}&limit=100")
         except ApiError as ex:
-            print(f"  活动分页失败 {ex}")
+            print(_m(f"  活动分页失败 {ex}", f"  activity page failed: {ex}"))
             break
         if not data:
             break
@@ -367,13 +380,13 @@ def sync(days=90, with_fit=False):
             break
         offset += 100
         time.sleep(config.THROTTLE_SEC)
-    print(f"  ✓ 活动 {total} 条")
+    print(_m(f"  ✓ 活动 {total} 条", f"  ✓ activities {total}"))
 
     # 5) 快照类
     for label, path, key in [
-        ("健身年龄", f"/fitnessage-service/fitnessage/v2/{today.isoformat()}", "fitness_age"),
-        ("心率区间", "/biometric-service/heartRateZones/v2", "hr_zones"),
-        ("用户资料", "/userprofile-service/userprofile/settings", "profile"),
+        (_m("健身年龄", "Fitness age"), f"/fitnessage-service/fitnessage/v2/{today.isoformat()}", "fitness_age"),
+        (_m("心率区间", "HR zones"), "/biometric-service/heartRateZones/v2", "hr_zones"),
+        (_m("用户资料", "User profile"), "/userprofile-service/userprofile/settings", "profile"),
     ]:
         try:
             data, ms = api.get(path)
@@ -391,7 +404,7 @@ def sync(days=90, with_fit=False):
     db.set_meta(conn, "last_sync", datetime.now().isoformat(timespec="seconds"))
     db.set_meta(conn, "last_sync_range", f"{s}~{e}")
 
-    print("\n[结果]")
+    print(_m("\n[结果]", "\n[result]"))
     for t in ("daily", "sleep", "weight", "hrv", "activities"):
         n = conn.execute(f"SELECT COUNT(*) c FROM {t}").fetchone()["c"]
         print(f"  {t:<11}{n:>5}")
@@ -403,7 +416,8 @@ def backfill(since="2019-01-01", with_daily=False):
     api = Client()
     conn = db.connect()
     db.init()
-    print(f"[backfill] 活动自 {since} 起，端点 {config.BASE}")
+    print(_m(f"[backfill] 活动自 {since} 起，端点 {config.BASE}",
+              f"[backfill] activities since {since}, endpoint {config.BASE}"))
 
     offset, total, years, stop = 0, 0, {}, False
     while not stop:
@@ -411,7 +425,7 @@ def backfill(since="2019-01-01", with_daily=False):
             data, ms = api.get(
                 f"/activitylist-service/activities/search/activities?start={offset}&limit=100")
         except ApiError as ex:
-            print(f"\n  分页失败 {ex}")
+            print(_m(f"\n  分页失败 {ex}", f"\n  page failed: {ex}"))
             break
         if not data:
             break
@@ -427,7 +441,7 @@ def backfill(since="2019-01-01", with_daily=False):
             db.upsert(conn, "activities", rows)
             total += len(rows)
         db.log_fetch(conn, f"backfill start={offset}", 200, ms, len(rows))
-        print(f"\r  已拉 {total} 条", end="", flush=True)
+        print(_m(f"\r  已拉 {total} 条", f"\r  fetched {total}"), end="", flush=True)
         if stop or len(data) < 100:
             break
         offset += 100
@@ -445,20 +459,21 @@ def backfill(since="2019-01-01", with_daily=False):
                     f"?startDate={cur.isoformat()}&endDate={end.isoformat()}")
                 n = db.upsert(conn, "daily", parse_daily(data.get("data", []))) if data else 0
                 db.log_fetch(conn, f"daily {cur}", 200, ms, n)
-                print(f"\r  每日汇总 {cur} +{n} 天", end="", flush=True)
+                print(_m(f"\r  每日汇总 {cur} +{n} 天", f"\r  daily summary {cur} +{n} days"), end="", flush=True)
             except ApiError as ex:
-                print(f"\n  每日汇总 {cur} 失败 {ex}")
+                print(_m(f"\n  每日汇总 {cur} 失败 {ex}", f"\n  daily summary {cur} failed: {ex}"))
             cur = end + timedelta(days=1)
             time.sleep(config.THROTTLE_SEC)
         print()
 
     db.set_meta(conn, "backfilled_from", since)
-    print(f"[backfill] 本次写入 {total} 条活动")
+    print(_m(f"[backfill] 本次写入 {total} 条活动", f"[backfill] wrote {total} {_pl(total, 'activity', 'activities')}"))
     for y in sorted(years):
-        print(f"  {y}  {years[y]:>4} 条")
+        print(_m(f"  {y}  {years[y]:>4} 条", f"  {y}  {years[y]:>4}"))
     n = conn.execute("SELECT COUNT(*) c FROM activities").fetchone()["c"]
     r = conn.execute("SELECT MIN(substr(start_local,1,10)) a, MAX(substr(start_local,1,10)) b FROM activities").fetchone()
-    print(f"  库内活动合计 {n} 条（{r['a'] or '—'} → {r['b'] or '—'}）")
+    print(_m(f"  库内活动合计 {n} 条（{r['a'] or '—'} → {r['b'] or '—'}）",
+              f"  total activities {n} ({r['a'] or '—'} → {r['b'] or '—'})"))
     conn.close()
 
 
@@ -467,7 +482,7 @@ def sync_fit(conn, api):
     ids = [r["activity_id"] for r in
            conn.execute("SELECT activity_id FROM activities ORDER BY start_local DESC")]
     todo = [i for i in ids if str(i) not in have]
-    print(f"[fit] 需归档 {len(todo)} 个")
+    print(_m(f"[fit] 需归档 {len(todo)} 个", f"[fit] {len(todo)} {_pl(len(todo), 'file', 'files')} to archive"))
     for aid in todo:
         url = config.BASE + f"/download-service/files/activity/{aid}"
         try:
@@ -551,15 +566,17 @@ def report(week=True):
     acts = _activities_by_day(conn, s, e)
 
     if not daily and not sleep:
-        print("库里没有这段数据，先跑 sync")
+        print(_m("库里没有这段数据，先跑 sync", "No data in this range; run sync first"))
         return
 
     lines = []
-    lines.append(f"# Garmin 周报（{s} ~ {e}）\n")
-    lines.append("> 数据来自 Garmin Connect 个人 API，只读同步。\n")
+    lines.append(_m(f"# Garmin 周报（{s} ~ {e}）\n", f"# Garmin weekly report ({s} ~ {e})\n"))
+    lines.append(_m("> 数据来自 Garmin Connect 个人 API，只读同步。\n",
+                    "> Data from the Garmin Connect Personal API, read-only sync.\n"))
 
-    lines.append("## 逐日\n")
-    lines.append("| 日期 | 步数 | 睡眠 | 静息心率 | 压力 | Body Battery | 训练 |")
+    lines.append(_m("## 逐日\n", "## Daily\n"))
+    lines.append(_m("| 日期 | 步数 | 睡眠 | 静息心率 | 压力 | Body Battery | 训练 |",
+                    "| Date | Steps | Sleep | Resting HR | Stress | Body Battery | Training |"))
     lines.append("|---|---|---|---|---|---|---|")
     for d in daterange(start, today):
         k = d.isoformat()
@@ -586,12 +603,16 @@ def report(week=True):
     n_act = sum(len(v) for v in acts.values())
     act_sec = sum((a.get("duration_s") or 0) for v in acts.values() for a in v)
 
-    lines.append("\n## 本期汇总\n")
-    lines.append(f"- 日均步数：{f'{steps_avg:,.0f}' if steps_avg else '—'}")
-    lines.append(f"- 日均睡眠：{_fmt_hms(sleep_avg)}")
-    lines.append(f"- 平均静息心率：{f'{rhr_avg:.0f}' if rhr_avg else '—'}")
-    lines.append(f"- 平均夜间 HRV：{f'{hrv_avg:.0f}' if hrv_avg else '—'}")
-    lines.append(f"- 训练：{n_act} 次，累计 {_fmt_hms(act_sec)}")
+    lines.append(_m("\n## 本期汇总\n", "\n## Summary\n"))
+    lines.append(_m(f"- 日均步数：{f'{steps_avg:,.0f}' if steps_avg else '—'}",
+                    f"- Avg steps: {f'{steps_avg:,.0f}' if steps_avg else '—'}"))
+    lines.append(_m(f"- 日均睡眠：{_fmt_hms(sleep_avg)}", f"- Avg sleep: {_fmt_hms(sleep_avg)}"))
+    lines.append(_m(f"- 平均静息心率：{f'{rhr_avg:.0f}' if rhr_avg else '—'}",
+                    f"- Avg resting HR: {f'{rhr_avg:.0f}' if rhr_avg else '—'}"))
+    lines.append(_m(f"- 平均夜间 HRV：{f'{hrv_avg:.0f}' if hrv_avg else '—'}",
+                    f"- Avg night HRV: {f'{hrv_avg:.0f}' if hrv_avg else '—'}"))
+    lines.append(_m(f"- 训练：{n_act} 次，累计 {_fmt_hms(act_sec)}",
+                    f"- Training: {n_act} {_pl(n_act, 'session', 'sessions')}, {_fmt_hms(act_sec)} total"))
 
     # 上周对比
     p_start = start - timedelta(days=days)
@@ -601,7 +622,7 @@ def report(week=True):
         (p_start.isoformat(), p_end.isoformat()))])
     if p_steps and steps_avg:
         delta = (steps_avg - p_steps) / p_steps * 100
-        lines.append(f"- 步数环比上周：{delta:+.1f}%")
+        lines.append(_m(f"- 步数环比上周：{delta:+.1f}%", f"- Steps vs previous period: {delta:+.1f}%"))
 
     # 关注项
     flags = []
@@ -609,29 +630,36 @@ def report(week=True):
              if v.get("sleep_seconds") and v["sleep_seconds"] < 6 * 3600]
     for i in range(len(short) - 1):
         if (date.fromisoformat(short[i + 1]) - date.fromisoformat(short[i])).days == 1:
-            flags.append(f"{short[i]} 与 {short[i+1]} 连续两晚睡眠不足 6 小时")
+            flags.append(_m(f"{short[i]} 与 {short[i+1]} 连续两晚睡眠不足 6 小时",
+                            f"{short[i]} and {short[i+1]}: two consecutive nights under 6 h"))
             break
     if sleep_avg and sleep_avg < 7 * 3600:
-        flags.append(f"本期日均睡眠 {_fmt_hms(sleep_avg)}，低于 7 小时")
+        flags.append(_m(f"本期日均睡眠 {_fmt_hms(sleep_avg)}，低于 7 小时",
+                        f"Average sleep {_fmt_hms(sleep_avg)}, below 7 h"))
     if p_steps and steps_avg and steps_avg > p_steps * 1.5:
-        flags.append(f"步数较上周增 {((steps_avg-p_steps)/p_steps*100):.0f}%，注意别一上来就加量")
+        flags.append(_m(f"步数较上周增 {((steps_avg-p_steps)/p_steps*100):.0f}%，注意别一上来就加量",
+                        f"Steps up {((steps_avg-p_steps)/p_steps*100):.0f}% vs previous period; do not add load too fast"))
     low_hrv = [k for k, v in hrv.items() if v.get("status") == "LOW"]
     if len(low_hrv) >= 3:
-        flags.append(f"HRV 偏低 {len(low_hrv)} 天（{'、'.join(sorted(low_hrv)[-3:])}…），恢复不充分")
+        flags.append(_m(f"HRV 偏低 {len(low_hrv)} 天（{'、'.join(sorted(low_hrv)[-3:])}…），恢复不充分",
+                        f"HRV low on {len(low_hrv)} days ({', '.join(sorted(low_hrv)[-3:])}…); recovery is incomplete"))
 
-    lines.append("\n## 关注\n")
-    lines.extend([f"- {f}" for f in flags] or ["- 无异常"])
+    lines.append(_m("\n## 关注\n", "\n## Watch items\n"))
+    lines.extend([f"- {f}" for f in flags] or [_m("- 无异常", "- Nothing unusual")])
 
-    lines.append(f"\n> 今日（{today.isoformat()}）数据不完整，统计口径截至同步时刻。")
+    lines.append(_m(f"\n> 今日（{today.isoformat()}）数据不完整，统计口径截至同步时刻。",
+                    f"\n> Today ({today.isoformat()}) is incomplete; statistics are as of the sync time."))
     missing = [d.isoformat() for d in daterange(start, today) if d.isoformat() not in daily]
     if missing:
-        lines.append(f"\n> 缺数据：{'、'.join(missing)}（可能是没戴表或未同步）")
+        lines.append(_m(f"\n> 缺数据：{'、'.join(missing)}（可能是没戴表或未同步）",
+                        f"\n> Missing data: {', '.join(missing)} (watch not worn or not synced)"))
 
     text = "\n".join(lines) + "\n"
-    out = config.REPORT_DIR / f"{'周报' if week else '月报'}-{today.isoformat()}.md"
+    out = config.REPORT_DIR / _m(f"{'周报' if week else '月报'}-{today.isoformat()}.md",
+                                   f"{'weekly' if week else 'monthly'}-{today.isoformat()}.md")
     out.write_text(text)
     print(text)
-    print(f"[写入] {out}")
+    print(_m(f"[写入] {out}", f"[written] {out}"))
     conn.close()
 
 
@@ -639,35 +667,40 @@ def report(week=True):
 def status():
     conn = db.connect()
     db.init()
-    print(f"端点：{config.BASE}")
-    print(f"库：{config.DB_PATH}")
+    print(_m(f"端点：{config.BASE}", f"Endpoint: {config.BASE}"))
+    print(_m(f"库：{config.DB_PATH}", f"DB: {config.DB_PATH}"))
     for t in ("daily", "sleep", "weight", "hrv", "activities"):
         r = conn.execute(f"SELECT COUNT(*) c, MIN(calendar_date) a, MAX(calendar_date) b FROM {t}"
                          ).fetchone() if t != "activities" else None
         if t == "activities":
             r = conn.execute("SELECT COUNT(*) c, MIN(start_local) a, MAX(start_local) b FROM activities").fetchone()
         print(f"  {t:<11}{r['c']:>5}  {r['a'] or '—'} → {r['b'] or '—'}")
-    print(f"最后同步：{db.get_meta(conn, 'last_sync', '从未')}  区间 {db.get_meta(conn, 'last_sync_range', '—')}")
+    print(_m(f"最后同步：{db.get_meta(conn, 'last_sync', '从未')}  区间 {db.get_meta(conn, 'last_sync_range', '—')}",
+              f"Last sync: {db.get_meta(conn, 'last_sync', 'never')}  range {db.get_meta(conn, 'last_sync_range', '—')}"))
     errs = conn.execute("SELECT COUNT(*) c FROM fetch_log WHERE status=0 OR status>=400").fetchone()["c"]
-    print(f"失败请求（累计）：{errs}")
+    print(_m(f"失败请求（累计）：{errs}", f"Failed requests (total): {errs}"))
     conn.close()
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Garmin Connect 个人 API 工具")
+    ap = argparse.ArgumentParser(description=_m("Garmin Connect 个人 API 工具",
+                                                "Garmin Connect Personal API tool"))
     sub = ap.add_subparsers(dest="cmd", required=True)
-    p_sync = sub.add_parser("sync", help="拉取数据入库")
+    p_sync = sub.add_parser("sync", help=_m("拉取数据入库", "sync data into the local DB"))
     p_sync.add_argument("--days", type=int, default=90)
-    p_sync.add_argument("--fit", action="store_true", help="同时归档 FIT 原始文件")
-    p_rep = sub.add_parser("report", help="生成周报/月报")
+    p_sync.add_argument("--fit", action="store_true",
+                        help=_m("同时归档 FIT 原始文件", "also archive original FIT files"))
+    p_rep = sub.add_parser("report", help=_m("生成周报/月报", "generate a weekly/monthly report"))
     p_rep.add_argument("--week", action="store_true", default=True)
     p_rep.add_argument("--month", action="store_true")
-    p_dash = sub.add_parser("dashboard", help="生成 HTML 看板")
+    p_dash = sub.add_parser("dashboard", help=_m("生成 HTML 看板", "build the HTML dashboard"))
     p_dash.add_argument("--days", type=int, default=90)
-    p_bf = sub.add_parser("backfill", help="回填历史活动（不含睡眠等逐日数据）")
+    p_bf = sub.add_parser("backfill", help=_m("回填历史活动（不含睡眠等逐日数据）",
+                                             "backfill historical activities (no daily sleep data)"))
     p_bf.add_argument("--since", default="2019-01-01")
-    p_bf.add_argument("--daily", action="store_true", help="顺带补每日汇总（较慢）")
-    sub.add_parser("status", help="查看库状态")
+    p_bf.add_argument("--daily", action="store_true",
+                      help=_m("顺带补每日汇总（较慢）", "also backfill daily summaries (slow)"))
+    sub.add_parser("status", help=_m("查看库状态", "show DB status"))
 
     args = ap.parse_args()
     if args.cmd == "sync":
@@ -687,5 +720,5 @@ if __name__ == "__main__":
     try:
         main()
     except ApiError as e:
-        print(f"\n[错误] {e}", file=sys.stderr)
+        print(_m(f"\n[错误] {e}", f"\n[error] {e}"), file=sys.stderr)
         sys.exit(1)

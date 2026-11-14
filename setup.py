@@ -139,7 +139,7 @@ def main():
         days = args.days if args.yes else int(ask(
             L("第 3 步：首次拉取多少天", "Step 3: initial sync days"), str(args.days)))
         print(L(f"\n第 3 步：拉取最近 {days} 天数据（约 1–3 分钟）",
-                f"\nStep 3: syncing the last {days} days (about 1–3 min)"))
+                f"\nStep 3: syncing the last {days} day{'' if days == 1 else 's'} (about 1–3 min)"))
         r = subprocess.run([sys.executable, "garmin.py", "sync", "--days", str(days)], cwd=ROOT)
         if r.returncode != 0:
             print(L("同步失败，请把上面的报错发给我。",
