@@ -1,0 +1,35 @@
+{
+  "available": [
+    "abductor",
+    "barbell",
+    "bench",
+    "bodyweight",
+    "cable",
+    "cable_row",
+    "dumbbell",
+    "hack_squat",
+    "hip_thrust",
+    "lat_pulldown",
+    "leg_press",
+    "pullup_bar",
+    "squat_rack",
+    "suspension"
+  ],
+  "note": "按现有训练记录推断。可增删下面的器械 key，页面只从这里推荐。",
+  "names": {
+    "abductor": "髋外展机",
+    "barbell": "杠铃",
+    "bench": "卧推架",
+    "bodyweight": "自重",
+    "cable": "龙门架 / 绳索",
+    "cable_row": "坐姿划船机",
+    "dumbbell": "哑铃",
+    "hip_thrust": "臀推架",
+    "lat_pulldown": "高位下拉机",
+    "leg_press": "腿举机",
+    "pullup_bar": "单杠",
+    "squat_rack": "深蹲架",
+    "suspension": "悬吊带",
+    "hack_squat": "哈克深蹲机"
+  }
+}

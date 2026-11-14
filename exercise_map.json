@@ -1,0 +1,22 @@
+{
+  "_note": "手表没认出的动作在这里补映射，key 用 Garmin 的 category 或 subCategory（子类优先）。改完重跑 python3 garmin.py dashboard 即生效。",
+  "_records_note": "按训练日期纠正单次记录：日期 → Garmin 原始 key → 修正后的动作 key。下面这条是作者 2026-11-13 的示例，可按自己的记录改。",
+  "_records": {
+    "2026-11-13": {"WEIGHTED_SQUAT": "HACK_SQUAT"}
+  },
+  "_muscle_keys": [
+    "chest", "delt_front", "delt_side", "delt_rear",
+    "biceps", "triceps", "forearm",
+    "traps", "lats", "lower_back",
+    "abs", "obliques",
+    "glute_max", "glute_med", "quads", "hamstrings", "calves"
+  ],
+  "_example": {
+    "LEG_EXTENSION": {
+      "cn": "腿屈伸",
+      "primary": ["quads"],
+      "secondary": [],
+      "equipment": "leg_curl"
+    }
+  }
+}
