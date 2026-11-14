@@ -1,2 +1,2 @@
-# 无需第三方依赖，Python 3.10+ 标准库即可。
-# 仅首次生成动作素材时需要 Pillow（普通用户不需要）。
+# No third-party dependencies; Python 3.10+ standard library only.
+# Pillow is only needed if you regenerate the exercise assets.

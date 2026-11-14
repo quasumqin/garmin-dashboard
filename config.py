@@ -1,7 +1,24 @@
 #!/usr/bin/env python3
 """路径、端点与凭据配置。"""
+import locale
 import os
 from pathlib import Path
+
+
+def _detect_lang():
+    v = os.environ.get("GARMIN_LANG", "").lower()
+    if v.startswith("en"):
+        return "en"
+    if v.startswith("zh"):
+        return "zh"
+    try:
+        loc = locale.getlocale()[0] or os.environ.get("LANG", "")
+    except Exception:
+        loc = os.environ.get("LANG", "")
+    return "en" if loc.lower().startswith("en") else "zh"
+
+
+LANG = _detect_lang()
 
 ROOT = Path(__file__).resolve().parent
 # 数据目录默认在包内；分发时可用 GARMIN_HOME 指到别处

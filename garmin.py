@@ -36,7 +36,9 @@ class Client:
             c = json.loads(config.TOKEN_CACHE.read_text())
             if c.get("base") == config.BASE and c.get("exp", 0) > time.time() + 60:
                 self.token = c["token"]
-                print(f"[token] 复用缓存，剩余 {int((c['exp']-time.time())/60)} 分钟")
+                print(("[token] cached token, "
+                       f"{int((c['exp']-time.time())/60)} min left") if config.LANG == "en"
+                      else f"[token] 复用缓存，剩余 {int((c['exp']-time.time())/60)} 分钟")
         except Exception:
             pass
 
@@ -59,7 +61,9 @@ class Client:
         config.TOKEN_CACHE.write_text(json.dumps(
             {"token": tok, "exp": exp, "base": config.BASE}))
         config.TOKEN_CACHE.chmod(0o600)
-        print(f"[token] 已换取，有效至 {datetime.fromtimestamp(exp):%Y-%m-%d %H:%M}")
+        print((f"[token] new token, valid until {datetime.fromtimestamp(exp):%Y-%m-%d %H:%M}")
+               if config.LANG == "en" else
+               f"[token] 已换取，有效至 {datetime.fromtimestamp(exp):%Y-%m-%d %H:%M}")
 
     def _auth(self):
         if not self.token:
@@ -84,12 +88,14 @@ class Client:
                 ms = int((time.time() - t0) * 1000)
                 body = e.read().decode()[:300]
                 if e.code == 401 and attempt == 0:      # token 过期，重换一次
-                    print("[token] 401，重新换取")
+                    print("[token] 401, refreshing" if config.LANG == "en"
+                          else "[token] 401，重新换取")
                     self._fetch_token()
                     continue
                 if e.code in (429, 500, 502, 503, 504) and attempt < retries - 1:
                     wait = 2 ** attempt * 2
-                    print(f"    {e.code} 退避 {wait}s")
+                    print(f"    {e.code} backoff {wait}s" if config.LANG == "en"
+                          else f"    {e.code} 退避 {wait}s")
                     time.sleep(wait)
                     last = f"{e.code} {body}"
                     continue
@@ -497,8 +503,26 @@ TYPE_CN = {
 }
 
 
+TYPE_EN = {
+    "strength_training": "Strength Training", "running": "Running", "trail_running": "Trail Running",
+    "treadmill_running": "Treadmill Running", "cycling": "Cycling", "indoor_cycling": "Indoor Cycling",
+    "virtual_ride": "Virtual Ride",
+    "walking": "Walking", "hiking": "Hiking", "swimming": "Swimming", "lap_swimming": "Pool Swim",
+    "open_water_swimming": "Open Water Swim", "indoor_cardio": "Indoor Cardio", "yoga": "Yoga",
+    "pilates": "Pilates", "breathwork": "Breathwork", "strength_training_hit": "Strength Training",
+    "elliptical_training": "Elliptical", "elliptical": "Elliptical",
+    "stair_climbing": "Stair Climbing", "rowing": "Rowing",
+    "skiing": "Skiing", "snowboarding": "Snowboarding", "golf": "Golf", "tennis": "Tennis",
+    "other": "Other",
+}
+
+
+def _type_name(key):
+    return (TYPE_EN if config.LANG == "en" else TYPE_CN).get(key, key or "—")
+
+
 def _type_cn(key):
-    return TYPE_CN.get(key, key or "—")
+    return _type_name(key)
 
 
 def _activities_by_day(conn, start, end):

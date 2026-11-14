@@ -306,3 +306,60 @@ EXERCISE_IMAGES = {
     "SIT_UP": "crunch",
     "CRUNCH": "crunch",
 }
+
+# ---------------------------------------------------------------- 英文名
+MUSCLE_EN = {
+    "chest": "Chest", "delt_front": "Front Deltoid", "delt_side": "Side Deltoid",
+    "delt_rear": "Rear Deltoid", "biceps": "Biceps", "triceps": "Triceps",
+    "forearm": "Forearms", "traps": "Trapezius", "lats": "Lats",
+    "lower_back": "Lower Back", "abs": "Abs", "obliques": "Obliques",
+    "glute_max": "Glutes", "glute_med": "Glute Medius", "quads": "Quadriceps",
+    "hamstrings": "Hamstrings", "calves": "Calves",
+}
+
+EQUIPMENT_EN = {
+    "barbell": "Barbell", "dumbbell": "Dumbbell", "bench": "Bench",
+    "squat_rack": "Squat Rack", "cable": "Cable Machine",
+    "cable_row": "Seated Row Machine", "lat_pulldown": "Lat Pulldown",
+    "leg_press": "Leg Press", "hip_thrust": "Hip Thrust Bench",
+    "abductor": "Hip Abduction Machine", "pullup_bar": "Pull-up Bar",
+    "suspension": "Suspension Trainer", "bodyweight": "Bodyweight",
+    "leg_curl": "Leg Curl Machine", "calf_machine": "Calf Raise Machine",
+    "pec_deck": "Pec Deck", "hack_squat": "Hack Squat Machine",
+}
+
+EXERCISE_EN = {
+    "BENCH_PRESS": "Bench Press", "PUSH_UP": "Push-up", "FLYE": "Dumbbell Fly",
+    "CABLE_CROSSOVER": "Cable Crossover", "CHEST_FLY": "Chest Fly",
+    "PEC_DECK": "Pec Deck", "SHOULDER_PRESS": "Shoulder Press",
+    "LATERAL_RAISE": "Lateral Raise", "REVERSE_FLYE": "Reverse Fly",
+    "FACE_PULL": "Face Pull", "CURL": "Biceps Curl", "HAMMER_CURL": "Hammer Curl",
+    "TRICEPS_EXTENSION": "Triceps Pushdown", "DUMBBELL_KICKBACK": "Dumbbell Kickback",
+    "OVERHEAD_TRICEPS": "Overhead Triceps Extension", "PULL_UP": "Pull-up",
+    "LAT_PULLDOWN": "Lat Pulldown", "ROW": "Row", "SEATED_CABLE_ROW": "Seated Cable Row",
+    "SUSPENSION": "Suspension Training", "SQUAT": "Squat",
+    "WEIGHTED_SQUAT": "Weighted Squat", "HACK_SQUAT": "Hack Squat",
+    "LEG_PRESS": "Leg Press", "LUNGE": "Lunge", "DEADLIFT": "Deadlift",
+    "BARBELL_DEADLIFT": "Barbell Deadlift", "ROMANIAN_DEADLIFT": "Romanian Deadlift",
+    "LEG_CURL": "Leg Curl", "HIP_RAISE": "Glute Bridge",
+    "BARBELL_HIP_THRUST_ON_FLOOR": "Barbell Hip Thrust",
+    "HIP_STABILITY": "Hip Stability", "WEIGHTED_STANDING_HIP_ABDUCTION": "Standing Hip Abduction",
+    "STANDING_CALF_RAISE": "Standing Calf Raise", "SEATED_CALF_RAISE": "Seated Calf Raise",
+    "SIT_UP": "Sit-up", "CRUNCH": "Crunch", "PLANK": "Plank",
+    "HANGING_LEG_RAISE": "Hanging Leg Raise", "WRIST_CURL": "Wrist Curl",
+    "FARMER_CARRY": "Farmer's Carry",
+}
+
+SUGGESTION_EN = {
+    "卧推": "Bench Press", "绳索夹胸": "Cable Crossover", "俯卧撑": "Push-up",
+    "高位下拉": "Lat Pulldown", "坐姿绳索划船": "Seated Cable Row", "引体向上": "Pull-up",
+    "哑铃肩推": "Dumbbell Shoulder Press", "侧平举": "Lateral Raise", "反向飞鸟": "Reverse Fly",
+    "哑铃弯举": "Dumbbell Curl", "锤式弯举": "Hammer Curl",
+    "绳索下压": "Triceps Pushdown", "过头臂屈伸": "Overhead Triceps Extension",
+    "农夫行走": "Farmer's Carry", "腕弯举": "Wrist Curl",
+    "卷腹": "Crunch", "平板支撑": "Plank", "悬垂举腿": "Hanging Leg Raise",
+    "杠铃臀推": "Barbell Hip Thrust", "保加利亚分腿蹲": "Bulgarian Split Squat",
+    "腿举": "Leg Press", "哈克深蹲": "Hack Squat", "深蹲": "Squat", "弓步": "Lunge",
+    "罗马尼亚硬拉": "Romanian Deadlift", "哑铃罗马尼亚硬拉": "Dumbbell Romanian Deadlift",
+    "站姿提踵": "Standing Calf Raise", "腿举机提踵": "Leg Press Calf Raise",
+}

@@ -486,17 +486,50 @@
 <script>%%CHARTJS%%</script>
 <script>
 const DATA = %%DATA%%;
+const LANG = "%%LANG%%";
+const EN_TEXT = %%EN_TEXT%%;
+const tr = s => LANG === 'en' ? (EN_TEXT[s] || s) : s;
 
 /* ---------- 工具 ---------- */
 const $ = id => document.getElementById(id);
 const CSS = getComputedStyle(document.documentElement);
 const C = n => CSS.getPropertyValue(n).trim();
 const fmt = (v, d = 0) => (v === null || v === undefined || Number.isNaN(v))
-  ? '—' : v.toLocaleString('zh-CN', { minimumFractionDigits: d, maximumFractionDigits: d });
+  ? '—' : v.toLocaleString(LANG === 'en' ? 'en-US' : 'zh-CN', { minimumFractionDigits: d, maximumFractionDigits: d });
 /* 末尾 n 条 */
 const tail = (arr, n) => arr.slice(-Math.min(n, arr.length));
 /* 上一周期：再往前 n 条 */
 const prevPeriod = (arr, n) => arr.slice(-Math.min(2 * n, arr.length), -Math.min(n, arr.length));
+
+/* 英文：把静态/动态文本节点里的中文短语替换掉（不碰 script/style） */
+function localizeDOM(root = document.body) {
+  if (LANG !== 'en') return;
+  const keys = Object.keys(EN_TEXT).sort((a, b) => b.length - a.length);
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(n) {
+      const p = n.parentElement;
+      if (!p) return NodeFilter.FILTER_REJECT;
+      if (['SCRIPT', 'STYLE', 'NOSCRIPT'].includes(p.tagName)) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const n of nodes) {
+    let s = n.nodeValue;
+    for (const k of keys) if (s.includes(k)) s = s.split(k).join(EN_TEXT[k]);
+    if (s !== n.nodeValue) n.nodeValue = s;
+  }
+  root.querySelectorAll('[placeholder],[title],[aria-label]').forEach(el => {
+    for (const a of ['placeholder', 'title', 'aria-label']) {
+      const v = el.getAttribute(a);
+      if (!v) continue;
+      let s = v;
+      for (const k of keys) if (s.includes(k)) s = s.split(k).join(EN_TEXT[k]);
+      el.setAttribute(a, s);
+    }
+  });
+}
 
 /* ---------- 全局图表样式 ---------- */
 Chart.defaults.font.family = 'system-ui, -apple-system, "Segoe UI", "PingFang SC", sans-serif';
@@ -534,6 +567,13 @@ const BASE = {
 };
 const chartRefs = {};
 function make(id, cfg) {
+  if (LANG === 'en') {
+    (cfg.data?.datasets || []).forEach(d => { if (d.label) d.label = tr(d.label); });
+    ['x', 'y'].forEach(k => {
+      const t = cfg.options?.scales?.[k]?.title;
+      if (t && t.text) t.text = tr(t.text);
+    });
+  }
   if (chartRefs[id]) chartRefs[id].destroy();
   chartRefs[id] = new Chart($(id), cfg);
   return chartRefs[id];
@@ -786,7 +826,9 @@ function drawAll(n) {
     data: { labels: tEntries.map(e => e[0]), datasets: [{ label: '次数', data: tEntries.map(e => e[1].n), backgroundColor: C('--s3'), borderRadius: { topRight: 4, bottomRight: 4 }, barThickness: 16 }] },
     options: {
       ...BASE, indexAxis: 'y',
-      plugins: { ...BASE.plugins, tooltip: { ...TOOLTIP, callbacks: { label: c => `${c.parsed.x} 次，共 ${Math.round(tEntries[c.dataIndex][1].min)} 分钟` } } },
+      plugins: { ...BASE.plugins, tooltip: { ...TOOLTIP, callbacks: { label: c => LANG === 'en'
+        ? `${c.parsed.x} sessions, ${Math.round(tEntries[c.dataIndex][1].min)} min total`
+        : `${c.parsed.x} 次，共 ${Math.round(tEntries[c.dataIndex][1].min)} 分钟` } } },
       scales: { x: { ...AXIS.y, beginAtZero: true, ticks: { ...AXIS.y.ticks, precision: 0 } }, y: { ...AXIS.x, ticks: { ...AXIS.x.ticks, autoSkip: false } } }
     }
   });
@@ -816,7 +858,9 @@ function drawAll(n) {
     options: { ...BASE, scales: { x: AXIS.x, y: { ...AXIS.y, beginAtZero: true, ticks: { ...AXIS.y.ticks, callback: v => v >= 1000 ? (v / 1000) + 't' : v } } } }
   });
 
-  const GROUPS = [['推', C('--s1')], ['拉', C('--s2')], ['腿', C('--s3')], ['核心', C('--s4')], ['其他', C('--muted')]];
+  const GROUPS = LANG === 'en'
+    ? [['Push', C('--s1')], ['Pull', C('--s2')], ['Legs', C('--s3')], ['Core', C('--s4')], ['Other', C('--muted')]]
+    : [['推', C('--s1')], ['拉', C('--s2')], ['腿', C('--s3')], ['核心', C('--s4')], ['其他', C('--muted')]];
   make('c-str-sets', {
     type: 'bar',
     data: {
@@ -975,7 +1019,9 @@ function drawPMC(days) {
 
 /* ---------- 睡眠需求 × 训练 ---------- */
 function chipOf(q) {
-  const cn = { EXCELLENT: '优秀', GOOD: '良好', FAIR: '一般', POOR: '差' }[q] || q || '—';
+  const cn = (LANG === 'en'
+    ? { EXCELLENT: 'Excellent', GOOD: 'Good', FAIR: 'Fair', POOR: 'Poor' }
+    : { EXCELLENT: '优秀', GOOD: '良好', FAIR: '一般', POOR: '差' })[q] || q || '—';
   return `<span class="chip ${q || ''}">${cn}</span>`;
 }
 
@@ -1002,18 +1048,27 @@ function scatterChart(id, pts, xLabel, yLabel, opts = {}) {
       plugins: { ...BASE.plugins, legend: { ...LEGEND, display: true },
         tooltip: { ...TOOLTIP, callbacks: {
           title: c => c[0].raw.label || '',
-          label: c => `${xLabel} ${opts.xFmt ? opts.xFmt(c.parsed.x) : c.parsed.x} · ${yLabel} ${opts.yFmt ? opts.yFmt(c.parsed.y) : c.parsed.y}`
+          label: c => `${tr(xLabel)} ${opts.xFmt ? opts.xFmt(c.parsed.x) : c.parsed.x} · ${tr(yLabel)} ${opts.yFmt ? opts.yFmt(c.parsed.y) : c.parsed.y}`
         } } },
       scales: {
-        x: { ...AXIS.x, title: { display: true, text: xLabel, color: C('--muted'), font: { size: 11 } }, ticks: { ...AXIS.x.ticks, callback: v => opts.xFmt ? opts.xFmt(v) : v } },
-        y: { ...AXIS.y, beginAtZero: opts.yZero !== false, title: { display: true, text: yLabel, color: C('--muted'), font: { size: 11 } }, ticks: { ...AXIS.y.ticks, callback: v => opts.yFmt ? opts.yFmt(v) : v } }
+        x: { ...AXIS.x, title: { display: true, text: tr(xLabel), color: C('--muted'), font: { size: 11 } }, ticks: { ...AXIS.x.ticks, callback: v => opts.xFmt ? opts.xFmt(v) : v } },
+        y: { ...AXIS.y, beginAtZero: opts.yZero !== false, title: { display: true, text: tr(yLabel), color: C('--muted'), font: { size: 11 } }, ticks: { ...AXIS.y.ticks, callback: v => opts.yFmt ? opts.yFmt(v) : v } }
       }
     }
   });
 }
 
 function corrText(r, n, x, y) {
-  if (r === null || r === undefined || n < 5) return `样本 ${n} 条，不足 5 条，暂不计算相关性`;
+  if (r === null || r === undefined || n < 5) {
+    return LANG === 'en'
+      ? `Only ${n} points (< 5); correlation not calculated`
+      : `样本 ${n} 条，不足 5 条，暂不计算相关性`;
+  }
+  if (LANG === 'en') {
+    const dir = r > 0 ? 'positive' : 'negative';
+    const mag = Math.abs(r) < 0.2 ? 'very weak' : Math.abs(r) < 0.4 ? 'weak' : Math.abs(r) < 0.6 ? 'moderate' : 'strong';
+    return `Spearman r = ${r} (${mag} ${dir}), n = ${n}.${n < 15 ? ' Small sample; observational only.' : ''}`;
+  }
   const dir = r > 0 ? '正相关' : '负相关';
   const mag = Math.abs(r) < 0.2 ? '很弱' : Math.abs(r) < 0.4 ? '偏弱' : Math.abs(r) < 0.6 ? '中等' : '较强';
   return `Spearman r = ${r}（${mag}${dir}），样本 ${n} 条。${n < 15 ? '样本偏少，只作观察。' : ''}`;
@@ -1059,9 +1114,11 @@ function drawSleepExtras() {
   $('cap-late').textContent = corrText(late.r, late.n, '训练结束', '入睡');
 
   const rec = SX.correlations.recovery;
-  scatterChart('c-rec', rec.points, '前夜睡眠评分', '次日训练负荷', { xFmt: v => v + ' 分', yFmt: v => v, yZero: true, pointLabel: '睡眠日' });
+  scatterChart('c-rec', rec.points, '前夜睡眠评分', '次日训练负荷', { xFmt: v => v + (LANG === 'en' ? ' pts' : ' 分'), yFmt: v => v, yZero: true, pointLabel: '睡眠日' });
   $('cap-rec').innerHTML = corrText(rec.r, rec.n, '睡眠评分', '次日负荷')
-    + '<br>' + 'HRV → 次日负荷：' + corrText(SX.correlations.hrv_load.r, SX.correlations.hrv_load.n, 'HRV', '次日负荷');
+    + '<br>' + (LANG === 'en' ? 'HRV → next-day load: ' : 'HRV → 次日负荷：')
+    + corrText(SX.correlations.hrv_load.r, SX.correlations.hrv_load.n, 'HRV',
+               LANG === 'en' ? 'next-day load' : '次日负荷');
 
   const last14 = sc.slice(-14).reverse();
   $('sleep-x-table').innerHTML = `<table><thead><tr>
@@ -1144,7 +1201,7 @@ function renderWeek() {
     const wBand = (hi - lo) / max * 100;
     const left = lo / max * 100;
     return `<div class="wbar">
-      <span class="wname">${g}</span>
+      <span class="wname">${S.coverage_names?.[g] || g}</span>
       <div class="wtrack">
         <div class="wband" style="left:${left}%;width:${wBand}%"></div>
         <div class="wfill ${lvl ? 'lv' + lvl : ''}" style="width:${wFill}%"></div>
@@ -1154,9 +1211,15 @@ function renderWeek() {
   }).join('');
 
   const notes = [];
-  if (w.unknown_sets) notes.push(`未分类 ${w.unknown_sets} 组（手表没认出器械）未计入覆盖`);
-  if (w.vague_sets) notes.push(`待细分 ${w.vague_sets} 组（大类下混着不同动作）按大类估算`);
-  $('week-note').textContent = notes.length ? `注：${notes.join('；')}。可在 exercise_map.json 里补映射。` : '';
+  if (LANG === 'en') {
+    if (w.unknown_sets) notes.push(`${w.unknown_sets} unclassified sets (machine not recognised) excluded`);
+    if (w.vague_sets) notes.push(`${w.vague_sets} sets need a subcategory; counted by broad category`);
+    $('week-note').textContent = notes.length ? `Note: ${notes.join('; ')}. Add mappings in exercise_map.json.` : '';
+  } else {
+    if (w.unknown_sets) notes.push(`未分类 ${w.unknown_sets} 组（手表没认出器械）未计入覆盖`);
+    if (w.vague_sets) notes.push(`待细分 ${w.vague_sets} 组（大类下混着不同动作）按大类估算`);
+    $('week-note').textContent = notes.length ? `注：${notes.join('；')}。可在 exercise_map.json 里补映射。` : '';
+  }
 
   $('week-advice').innerHTML = w.advice.map(a => `
     <div class="wadv">
@@ -1164,10 +1227,11 @@ function renderWeek() {
       <div>
         <h4>${esc(a.title)}</h4>
         <p>${esc(a.text)}</p>
-        <div class="basis">依据：${esc(a.basis)}</div>
+        <div class="basis">${LANG === 'en' ? 'Basis: ' : '依据：'}${esc(a.basis)}</div>
         ${a.suggestions && a.suggestions.length ? `<div class="sugg">${a.suggestions.map(s => `<span>${esc(s.name)} · ${esc(s.equipment)}</span>`).join('')}</div>` : ''}
       </div>
     </div>`).join('');
+  localizeDOM(document.querySelector('.week-card') || document.body);
 }
 
 function sessionPrimary(s) {
@@ -1180,7 +1244,7 @@ function sessionSecondary(s) {
 function topGroups(s, n = 3) {
   return Object.entries(s.coverage || {}).filter(([, v]) => v > 0)
     .sort((a, b) => b[1] - a[1]).slice(0, n)
-    .map(([g, v]) => `${g} ${v.toFixed(0).replace('.0', '')}`).join(' · ');
+    .map(([g, v]) => `${S.coverage_names?.[g] || g} ${v.toFixed(0).replace('.0', '')}`).join(' · ');
 }
 function renderDayCards() {
   const el = $('day-cards');
@@ -1200,6 +1264,7 @@ function renderDayCards() {
     btn.addEventListener('click', () => openDay(i));
     el.appendChild(btn);
   });
+  localizeDOM(el);
 }
 
 function renderModalFig(id, primary, secondary) {
@@ -1252,6 +1317,7 @@ function openDay(i) {
     if (b.disabled) return;
     b.addEventListener('click', () => openExercise(s.exercises[+b.dataset.ex], s, i));
   });
+  localizeDOM($('modal-body'));
 }
 
 function openExercise(e, session, sessionIndex) {
@@ -1264,7 +1330,7 @@ function openExercise(e, session, sessionIndex) {
   const imgSrc = stem ? S.exercise_images[stem] : null;
   openModal(`
     <div class="m-nav">
-      <button data-back>‹ 返回 ${session.date} 动作</button>
+      <button data-back>${LANG === 'en' ? `‹ Back to ${session.date} exercises` : `‹ 返回 ${session.date} 动作`}</button>
       <div class="nav-right">
         <button data-prev ${pos <= 0 ? 'disabled' : ''}>‹ 上一个</button>
         <span class="pos">${pos + 1} / ${mapped.length}</span>
@@ -1313,6 +1379,7 @@ function openExercise(e, session, sessionIndex) {
       options: { ...BASE, plugins: { ...BASE.plugins, legend: { ...LEGEND, display: true } }, scales: { x: AXIS.x, y: { ...AXIS.y, beginAtZero: true, ticks: { ...AXIS.y.ticks, callback: v => v + 'kg' } } } }
     });
   }
+  localizeDOM($('modal-body'));
 }
 
 function qualityLabel(s) {
@@ -1342,6 +1409,7 @@ function renderStrengthTable() {
     <th style="width:100px">日期</th><th style="width:130px">动作记录</th><th style="width:130px">动作</th>
     <th style="width:150px">主要肌群</th><th>组数</th><th>次数</th><th>最大重量 kg</th><th>容量 kg</th>
   </tr></thead><tbody>${rows.join('')}</tbody></table>`;
+  localizeDOM($('table-strength'));
 }
 
 renderWeekTabs();
@@ -1363,6 +1431,7 @@ document.querySelectorAll('#pmc-range button').forEach(b => {
 
 renderTiles(DATA.daily.length);
 drawAll(DATA.daily.length);
+localizeDOM(document.body);
 </script>
 </body>
 </html>

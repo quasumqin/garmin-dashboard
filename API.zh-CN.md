@@ -1,5 +1,7 @@
 # Garmin 个人 API Key 申请说明
 
+**中文 | [English](API.md)**
+
 这套看板用的是 **Garmin Connect Personal API**：只读、只能访问**本人**数据、自用。
 它不是企业开发者计划，**不需要公司资质、不需要提交申请、没有人工审核**，在 Garmin Connect
 设置页自助生成即可。

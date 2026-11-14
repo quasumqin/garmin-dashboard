@@ -13,10 +13,12 @@ import config
 import db
 from garmin import TYPE_CN, _type_cn
 from muscle_map import (
-    COVERAGE_ORDER, DEFAULT_ICON, EQUIPMENT, EQUIPMENT_ICONS, MUSCLES, WEEKLY_STD,
+    COVERAGE_ORDER, DEFAULT_ICON, EQUIPMENT, EQUIPMENT_EN, EQUIPMENT_ICONS,
+    EXERCISE_EN, MUSCLES, MUSCLE_EN, WEEKLY_STD,
 )
 
 TEMPLATE = Path(__file__).parent / "template.html"
+EN_LOCALE = Path(__file__).parent / "locale" / "en.json"
 CHARTJS = Path(__file__).parent / "assets" / "chart.umd.min.js"
 OUT = config.REPORT_DIR / "dashboard.html"
 
@@ -101,6 +103,12 @@ def parse_strength(acts):
                 key = raw_key
                 name = SUB_CN.get(sub) or EX_CN.get(cat, "未分类")
                 group = SUB_GROUP.get(sub) or EX_GROUP.get(cat, "其他")
+            if config.LANG == "en":
+                if key is None:
+                    name, group = "Unclassified", "Other"
+                else:
+                    name = EXERCISE_EN.get(key, name)
+                    group = common.GROUP_EN.get(group, group)
             ex.append(dict(
                 date=d, key=key,
                 name=name,
@@ -206,10 +214,14 @@ def load(days=90):
             "weeks": weeks,
             "equipment": equipment,
             "equipment_source": equip_src,
-            "muscle_names": {k: v[0] for k, v in MUSCLES.items()},
+            "muscle_names": (MUSCLE_EN if config.LANG == "en"
+                             else {k: v[0] for k, v in MUSCLES.items()}),
+            "coverage_names": (common.COVERAGE_EN if config.LANG == "en"
+                               else {g: g for g in COVERAGE_ORDER}),
             "coverage_order": COVERAGE_ORDER,
             "std": WEEKLY_STD,
-            "equipment_names": {k: EQUIPMENT[k] for k in EQUIPMENT},
+            "equipment_names": (EQUIPMENT_EN if config.LANG == "en"
+                                else {k: EQUIPMENT[k] for k in EQUIPMENT}),
             "equipment_icons": {k: EQUIPMENT_ICONS.get(k, DEFAULT_ICON) for k in EQUIPMENT},
             "exercise_images": image_files,
             "exercise_image": image_map,
@@ -371,11 +383,146 @@ def advice(p):
     return out
 
 
+def advice_en(p):
+    """English version of advice(); same rules and thresholds."""
+    D, S, H, A = p["daily"], p["sleep"], p["hrv"], p["activities"]
+    out = []
+    add = lambda lvl, title, text, basis: out.append(
+        dict(level=lvl, icon=ICON[lvl], title=title, text=text, basis=basis))
+
+    sleep_avg = _avg([x["total_h"] for x in S])
+    score_avg = _avg([x["score"] for x in S])
+    deep_pct = _avg([x["deep_h"] / x["total_h"] * 100 for x in S if x["total_h"]])
+    rhr_avg = _avg([x["hr_resting"] for x in D])
+    hrv_avg = _avg([x["last_night_avg"] for x in H])
+    steps_avg = _avg([x["steps"] for x in D])
+    stress_avg = _avg([x["stress_avg"] for x in D])
+    spo2_min = min([x["spo2_min"] for x in D if x["spo2_min"] is not None], default=None)
+    mod = sum(x["intensity_moderate"] or 0 for x in D)
+    vig = sum(x["intensity_vigorous"] or 0 for x in D)
+    vig_pct = vig / (mod + vig) * 100 if (mod + vig) else None
+
+    weeks = {}
+    w0 = date.fromisoformat(p["range"]["start"])
+    w0 -= timedelta(days=w0.weekday())
+    while w0 <= date.today():
+        weeks[w0.isoformat()] = {"count": 0, "min": 0}
+        w0 += timedelta(days=7)
+    for a in A:
+        d = date.fromisoformat(a["date"])
+        k = (d - timedelta(days=d.weekday())).isoformat()
+        w = weeks.setdefault(k, {"count": 0, "min": 0})
+        w["count"] += 1
+        w["min"] += a["duration_min"]
+    wk_counts = [w["count"] for w in weeks.values()]
+    sessions_avg = _avg(wk_counts)
+    last_w = weeks[max(weeks)] if weeks else None
+    prev_w = weeks[sorted(weeks)[-2]] if len(weeks) > 1 else None
+
+    if sleep_avg and sleep_avg < 7:
+        add("warn", "Sleep is short — fix duration before intensity",
+            f"You are {(7 - sleep_avg) * 60:.0f} min short per night. With chronic sleep debt, the same training costs more recovery. "
+            "Move bedtime 30 minutes earlier; it beats adding another session.",
+            f"Average sleep {sleep_avg:.1f} h ({len(S)} nights)")
+    elif sleep_avg:
+        add("good", "Sleep duration is on target", "Keep the current routine.",
+            f"Average sleep {sleep_avg:.1f} h")
+
+    if deep_pct and deep_pct < 15:
+        add("warn", "Deep sleep is low",
+            "Deep sleep is the main repair stage. Try no food 2 hours before bed, a cooler room, "
+            "and a fixed wake time (more effective than a fixed bedtime).",
+            f"Deep sleep {deep_pct:.0f}% of sleep (reference 15–25%)")
+
+    if score_avg and score_avg < 70:
+        add("warn", "Sleep score is low overall",
+            "A low score rarely has one cause. Check duration and deep sleep first, then alcohol or late hard training.",
+            f"Average score {score_avg:.0f} (0–100)")
+
+    low_streak, cur = 0, 0
+    for x in H:
+        cur = cur + 1 if x["status"] == "LOW" else 0
+        low_streak = max(low_streak, cur)
+    if low_streak >= 3:
+        add("crit", "HRV has been low for days — schedule a deload",
+            "HRV below baseline means sympathetic dominance and incomplete recovery. Cut intensity to about 60% this week, "
+            "prioritize sleep, and do not try to train your way out of it.",
+            f"Longest LOW streak {low_streak} days (average {hrv_avg:.0f} ms)" if hrv_avg
+            else f"Longest LOW streak {low_streak} days")
+
+    if rhr_avg and len(D) >= 20:
+        base = _avg([x["hr_resting"] for x in D[:-14]])
+        recent = _avg([x["hr_resting"] for x in D[-7:]])
+        if base and recent and recent - base >= 5:
+            add("serious", "Resting heart rate is above baseline",
+                "Rule out illness, poor sleep, alcohol and late hard training first. If HRV is also low, treat it as under-recovery; "
+                "if it stays up for more than a week, mention it at a check-up.",
+                f"Last 7 days {recent:.0f} bpm vs earlier baseline {base:.0f} bpm")
+
+    if stress_avg and stress_avg >= 45:
+        add("warn", "Daily stress is high",
+            "High daytime stress narrows the recovery window at night. A 10-minute walk or breathing break in the afternoon "
+            "works better than one big relaxation session at night.",
+            f"Average stress {stress_avg:.0f} (0–100)")
+
+    if steps_avg and steps_avg < 6000:
+        add("warn", "Daily activity is low",
+            "Non-exercise activity (NEAT) is easy to underestimate. Two 10-minute walks a day are easier to sustain than one long walk.",
+            f"Average {steps_avg:,.0f} steps/day")
+    elif steps_avg:
+        add("good", "Daily activity looks good", "Keep it up, but do not let steps replace strength training.",
+            f"Average {steps_avg:,.0f} steps/day")
+
+    if sessions_avg is not None and sessions_avg < 2:
+        add("warn", "Training frequency is low",
+            "Under 2 sessions a week makes it hard to accumulate a stimulus. Even 25 minutes, "
+            "3 times a week, beats one weekend session.",
+            f"Average {sessions_avg:.1f} sessions/week")
+    elif sessions_avg:
+        add("good", "Training frequency is steady", "Keep the weekly rhythm and shift focus to quality.",
+            f"Average {sessions_avg:.1f} sessions/week")
+
+    if last_w and prev_w and prev_w["min"] and last_w["min"] > prev_w["min"] * 1.5:
+        add("warn", "Training volume jumped too fast",
+            "A single-week increase above 50% raises injury risk. Back off about 20% next week.",
+            f"This week {last_w['min']} min vs last week {prev_w['min']} min")
+
+    if vig_pct is not None and vig_pct > 25:
+        add("warn", "Too much high-intensity work",
+            "A common split is 80% easy / 20% hard. Too much hard work eats the recovery window and weakens the aerobic base.",
+            f"Vigorous minutes {vig_pct:.0f}% of all intensity minutes")
+
+    if len(p["weight"]) >= 2:
+        w0, w1 = p["weight"][0], p["weight"][-1]
+        d0, d1 = date.fromisoformat(w0["date"]), date.fromisoformat(w1["date"])
+        span = max((d1 - d0).days, 1)
+        rate = (w1["kg"] - w0["kg"]) / span * 7
+        if abs(rate) > 1:
+            add("warn", "Weight is moving fast",
+                "Weekly swings above 1 kg are usually water and glycogen, not just fat. "
+                "Weigh at the same time (morning, fasted) and look at the 7-day average.",
+                f"{w0['date']} {w0['kg']}kg → {w1['date']} {w1['kg']}kg ({rate:+.1f} kg/week)")
+
+    if spo2_min is not None and spo2_min < 88:
+        add("crit", "Night-time SpO2 hit a low",
+            "One low reading can be wrist position or measurement error, but repeated lows matter. "
+            "If you also snore or feel sleepy during the day, ask about a sleep study.",
+            f"Lowest night-time SpO2 {spo2_min:.0f}%")
+
+    if not out:
+        add("good", "Data looks stable", "No rule fired; keep doing what you are doing.", "All rules untriggered")
+
+    order = {"crit": 0, "serious": 1, "warn": 2, "good": 3}
+    out.sort(key=lambda x: order[x["level"]])
+    return out
+
+
 def render_advice(items):
+    basis_label = "Basis: " if config.LANG == "en" else "依据："
     return "\n".join(
         f'<div class="adv"><div class="ico {i["level"]}">{i["icon"]}</div>'
         f'<div><h4>{i["title"]}</h4><p>{i["text"]}</p>'
-        f'<div class="basis">依据：{i["basis"]}</div></div></div>'
+        f'<div class="basis">{basis_label}{i["basis"]}</div></div></div>'
         for i in items)
 
 
@@ -420,6 +567,46 @@ def table_acts(p):
             "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>")
 
 
+def table_days_en(p):
+    S = {x["date"]: x for x in p["sleep"]}
+    by_day = {}
+    for a in p["activities"]:
+        by_day.setdefault(a["date"], []).append(a)
+    rows = []
+    for d in p["daily"][-16:][::-1]:
+        s = S.get(d["date"], {})
+        acts = by_day.get(d["date"], [])
+        tr = ", ".join(f"{a['type_cn']} {a['duration_min']}′" for a in acts) or "—"
+        rows.append(
+            f"<tr><td>{d['date']}</td><td>{d['steps'] or '—'}</td>"
+            f"<td>{(s.get('total_h') or 0):.1f}h</td>"
+            f"<td>{s.get('score') or '—'}</td>"
+            f"<td>{(s.get('deep_h') or 0):.1f}h</td>"
+            f"<td>{d['hr_resting'] or '—'}</td>"
+            f"<td>{d['stress_avg'] if d['stress_avg'] is not None else '—'}</td>"
+            f"<td>{d['bb_min'] if d['bb_min'] is not None else '—'}–{d['bb_max'] if d['bb_max'] is not None else '—'}</td>"
+            f"<td>{tr}</td></tr>")
+    head = ("<table><thead><tr><th>Date</th><th>Steps</th><th>Sleep</th><th>Score</th>"
+            "<th>Deep</th><th>Resting HR</th><th>Stress</th><th>Body Battery</th><th>Training</th>"
+            "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>")
+    return head
+
+
+def table_acts_en(p):
+    rows = []
+    for a in p["activities"][::-1]:
+        rows.append(
+            f"<tr><td>{a['date']}</td><td style='text-align:left'>{a['type_cn']}</td>"
+            f"<td>{a['duration_min']}′</td>"
+            f"<td>{a['distance_km'] if a['distance_km'] else '—'}</td>"
+            f"<td>{a['avg_hr'] or '—'}</td><td>{a['max_hr'] or '—'}</td>"
+            f"<td>{a['calories'] or '—'}</td><td>{a['load'] or '—'}</td>"
+            f"<td>{a['te'] or '—'}</td></tr>")
+    return ("<table><thead><tr><th>Date</th><th>Type</th><th>Duration</th><th>Distance km</th>"
+            "<th>Avg HR</th><th>Max HR</th><th>Calories</th><th>Load</th><th>Aerobic TE</th>"
+            "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>")
+
+
 def table_strength(p):
     ex = p["strength_ex"]
     if not ex:
@@ -454,16 +641,27 @@ def table_strength(p):
 def build(days=90):
     p = load(days)
     r = p["range"]
+    en = config.LANG == "en"
     html = TEMPLATE.read_text()
+    if en:
+        html = html.replace("<title>Garmin 数据看板</title>",
+                            "<title>Garmin Training & Health Dashboard</title>")
     html = html.replace("%%CHARTJS%%", CHARTJS.read_text())
+    html = html.replace("%%LANG%%", config.LANG)
+    html = html.replace("%%EN_TEXT%%",
+                        json.dumps(json.loads(EN_LOCALE.read_text()) if en else {},
+                                   ensure_ascii=False))
     html = html.replace("%%DATA%%", json.dumps(p, ensure_ascii=False))
-    html = html.replace("%%ADVICE%%", render_advice(advice(p)))
-    html = html.replace("%%TABLE_DAYS%%", table_days(p))
-    html = html.replace("%%TABLE_ACTS%%", table_acts(p))
-    html = html.replace("%%TABLE_STRENGTH%%", table_strength(p))
+    html = html.replace("%%ADVICE%%", render_advice(advice_en(p) if en else advice(p)))
+    html = html.replace("%%TABLE_DAYS%%", table_days_en(p) if en else table_days(p))
+    html = html.replace("%%TABLE_ACTS%%", table_acts_en(p) if en else table_acts(p))
     html = html.replace("%%BODY_SVG%%", common.build_body_svg())
-    html = html.replace("%%RANGE_LINE%%",
-                        f"数据范围 <b>{r['start']}</b> → <b>{r['end']}</b>（{r['days']} 天）")
+    if en:
+        html = html.replace("%%RANGE_LINE%%",
+                            f"Data range <b>{r['start']}</b> → <b>{r['end']}</b> ({r['days']} days)")
+    else:
+        html = html.replace("%%RANGE_LINE%%",
+                            f"数据范围 <b>{r['start']}</b> → <b>{r['end']}</b>（{r['days']} 天）")
     html = html.replace("%%GENERATED%%", datetime.now().strftime("%Y-%m-%d %H:%M"))
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(html)

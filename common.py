@@ -14,11 +14,17 @@ import math
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from config import LANG
 from muscle_map import (
-    COVERAGE_ORDER, DEFAULT_ICON, EQUIPMENT, EQUIPMENT_ICONS, EXERCISE_IMAGES,
-    EXERCISES, MUSCLE_TO_SLUGS, SUGGESTIONS, UNKNOWN_EXERCISE, WEEKLY_STD,
-    coverage_units, muscle_units,
+    COVERAGE_ORDER, DEFAULT_ICON, EQUIPMENT, EQUIPMENT_EN, EQUIPMENT_ICONS,
+    EXERCISE_EN, EXERCISE_IMAGES, EXERCISES, MUSCLE_TO_SLUGS, SUGGESTIONS,
+    SUGGESTION_EN, UNKNOWN_EXERCISE, WEEKLY_STD, coverage_units, muscle_units,
 )
+
+GROUP_EN = {"推": "Push", "拉": "Pull", "腿": "Legs", "核心": "Core", "其他": "Other"}
+COVERAGE_EN = {"胸": "Chest", "背": "Back", "肩": "Shoulders", "二头": "Biceps",
+               "三头": "Triceps", "前臂": "Forearms", "核心": "Core", "臀": "Glutes",
+               "腿前": "Quads", "腿后": "Hamstrings", "小腿": "Calves"}
 
 HERE = Path(__file__).parent
 EQUIP_FILE = HERE / "gym_equipment.json"
@@ -237,7 +243,9 @@ def build_sleep_extras(conn, acts, days=90):
             continue
         end_min = (end.hour * 60 + end.minute - 18 * 60) % 1440
         late_pts.append(dict(x=end_min, y=info["bed_min"], date=d,
-                             label=f"{d} 训练结束 {end:%H:%M} → 入睡 {info['bed']}"))
+                             label=(f"{d} training ended {end:%H:%M} → bedtime {info['bed']}"
+                                    if LANG == "en" else
+                                    f"{d} 训练结束 {end:%H:%M} → 入睡 {info['bed']}")))
     r_late, n_late = spearman([p["x"] for p in late_pts], [p["y"] for p in late_pts])
 
     # 散点 2：前夜恢复 → 次日训练负荷
@@ -252,11 +260,15 @@ def build_sleep_extras(conn, acts, days=90):
             continue
         if s["score"]:
             rec_pts.append(dict(x=s["score"], y=round(load_by_day[nxt], 1), date=s["date"],
-                                label=f"{s['date']} 睡眠 {s['score']} 分 → 次日负荷 {load_by_day[nxt]:.0f}"))
+                                label=(f"{s['date']} sleep {s['score']} → next-day load {load_by_day[nxt]:.0f}"
+                                       if LANG == "en" else
+                                       f"{s['date']} 睡眠 {s['score']} 分 → 次日负荷 {load_by_day[nxt]:.0f}")))
         h = hrv.get(s["date"])
         if h and h["last_night_avg"]:
             rec_hrv_pts.append(dict(x=h["last_night_avg"], y=round(load_by_day[nxt], 1), date=s["date"],
-                                    label=f"{s['date']} HRV {h['last_night_avg']} → 次日负荷 {load_by_day[nxt]:.0f}"))
+                                    label=(f"{s['date']} HRV {h['last_night_avg']} → next-day load {load_by_day[nxt]:.0f}"
+                                           if LANG == "en" else
+                                           f"{s['date']} HRV {h['last_night_avg']} → 次日负荷 {load_by_day[nxt]:.0f}")))
     r_rec, n_rec = spearman([p["x"] for p in rec_pts], [p["y"] for p in rec_pts])
     r_hrv, n_hrv = spearman([p["x"] for p in rec_hrv_pts], [p["y"] for p in rec_hrv_pts])
 
@@ -292,7 +304,7 @@ def parse_strength(acts):
             n = s.get("sets") or 0
             if cat == "UNKNOWN":
                 unknown += n
-                ex_list.append(dict(key=None, name="未分类", sets=n,
+                ex_list.append(dict(key=None, name="Unclassified" if LANG == "en" else "未分类", sets=n,
                                     reps=s.get("reps") or 0, max_kg=0, volume_kg=0,
                                     est_1rm=None, equipment="bodyweight",
                                     primary=[], secondary=[]))
@@ -312,7 +324,9 @@ def parse_strength(acts):
             volume += vol_kg
             per_set_reps = (reps / n) if n else 0
             est = round(max_kg * (1 + per_set_reps / 30), 1) if (max_kg and n) else None
-            item = dict(key=key, name=ex["cn"], sets=n, reps=reps,
+            item = dict(key=key,
+                        name=(EXERCISE_EN.get(key, ex["cn"]) if LANG == "en" else ex["cn"]),
+                        sets=n, reps=reps,
                         max_kg=max_kg, volume_kg=vol_kg, est_1rm=est,
                         equipment=ex["equipment"],
                         primary=ex["primary"], secondary=ex["secondary"])
@@ -444,8 +458,14 @@ def build_weeks(sessions, equipment):
         cov = {g: round(cov.get(g, 0), 1) for g in COVERAGE_ORDER}
         if not ss and idx >= 2:
             continue
-        label = "本周" if idx == 0 else ("上周" if idx == 1 else f"{mon.month}-{mon.day} 起")
-        when = "本周" if idx == 0 else "该周"
+        if LANG == "en":
+            label = "This week" if idx == 0 else ("Last week" if idx == 1 else f"Week of {mon.month}/{mon.day}")
+            when = "This week" if idx == 0 else "that week"
+        else:
+            label = "本周" if idx == 0 else ("上周" if idx == 1 else f"{mon.month}-{mon.day} 起")
+            when = "本周" if idx == 0 else "该周"
+        advice = (weekly_advice_en(cov, ss, equipment, when=when) if LANG == "en"
+                  else weekly_advice(cov, ss, equipment, when=when))
         out.append(dict(
             week=mon.isoformat(), label=label,
             start=mon.isoformat(), end=(mon + timedelta(days=6)).isoformat(),
@@ -456,7 +476,7 @@ def build_weeks(sessions, equipment):
             minutes=sum(x["duration_min"] for x in ss),
             volume_kg=sum(x["volume_kg"] for x in ss),
             coverage=cov,
-            advice=weekly_advice(cov, ss, equipment, when=when),
+            advice=advice,
         ))
     return out
 
@@ -547,6 +567,104 @@ def weekly_advice(cov, sessions, equipment, when="本周"):
         items.insert(0, dict(level="ok", title=f"{when}部位覆盖完整",
                              text="各部位都落在参考区间内，下周优先加重量或保持组数即可。",
                              basis="全部覆盖部位均在参考区间", suggestions=[]))
+
+    order = {"miss": 0, "low": 1, "high": 2, "info": 3, "ok": 4}
+    items.sort(key=lambda x: order[x["level"]])
+    return items
+
+
+def weekly_advice_en(cov, sessions, equipment, when="This week"):
+    """English version of weekly_advice. Coverage keys stay Chinese internally."""
+    items = []
+    done = {e["name"] for s in sessions for e in s["exercises"]}
+
+    def cname(g):
+        return COVERAGE_EN.get(g, g)
+
+    if not sessions:
+        return [dict(level="info", title=f"{when}: no strength sessions",
+                     text="This card only counts strength sessions recorded on the watch. If you trained but did not log sets, start recording them on the watch.",
+                     basis=f"{when}: 0 strength sessions", suggestions=[])]
+
+    for g in COVERAGE_ORDER:
+        v = cov.get(g, 0)
+        lo, hi = WEEKLY_STD[g]
+        name = cname(g)
+        if v == 0:
+            level, title = "miss", f"No {name.lower()} work {when.lower()}"
+            text = f"Reference: {lo}–{hi} effective sets per week."
+        elif v < lo:
+            level, title = "low", f"{name} volume is low"
+            text = f"{when} {v:g} sets, below the {lo}-set minimum."
+        elif v > hi * 1.5:
+            level, title = "high", f"{name} volume is high"
+            text = f"{when} {v:g} sets, well above the {hi}-set reference. Cut 1–2 sets next week if recovery is poor."
+        else:
+            continue
+
+        sugg = []
+        if level in ("miss", "low"):
+            for s in SUGGESTIONS.get(g, []):
+                if s["equipment"] not in equipment or s["name"] in done:
+                    continue
+                sugg.append(dict(name=SUGGESTION_EN.get(s["name"], s["name"]),
+                                 equipment=EQUIPMENT_EN.get(s["equipment"], ""),
+                                 why=s["why"]))
+                if len(sugg) == 2:
+                    break
+            if sugg:
+                text += " Add: " + ", ".join(f"{x['name']} ({x['equipment']})" for x in sugg) + "."
+            else:
+                text += " No matching equipment in your list; add machines in gym_equipment.json."
+        items.append(dict(level=level, title=title, text=text,
+                          basis=f"{when}: {name} {v:g} sets (reference {lo}–{hi})",
+                          suggestions=sugg))
+
+    push = sum(cov.get(x, 0) for x in ("胸", "肩", "三头"))
+    pull = sum(cov.get(x, 0) for x in ("背", "二头"))
+    if push and pull:
+        ratio = push / pull
+        if ratio > 1.25:
+            items.append(dict(level="info", title="More push than pull",
+                              text=f"Push {push:g} sets vs pull {pull:g} sets (ratio {ratio:.2f}). "
+                                   "Over time this can round the shoulders; add 1–2 sets of rows or face pulls.",
+                              basis=f"Push:pull {ratio:.2f} (reference 0.8–1.2)", suggestions=[]))
+        elif ratio < 0.8:
+            items.append(dict(level="info", title="More pull than push",
+                              text=f"Push {push:g} sets vs pull {pull:g} sets (ratio {ratio:.2f}). "
+                                   "Fine if posture is good; add bench or flys if you want more chest work.",
+                              basis=f"Push:pull {ratio:.2f} (reference 0.8–1.2)", suggestions=[]))
+
+    upper = sum(cov.get(x, 0) for x in ("胸", "背", "肩", "二头", "三头", "前臂"))
+    lower = sum(cov.get(x, 0) for x in ("臀", "腿前", "腿后", "小腿"))
+    if upper and lower:
+        r = upper / lower
+        if r > 1.8:
+            items.append(dict(level="info", title="Much more upper than lower body",
+                              text=f"Upper {upper:g} sets vs lower {lower:g} sets ({r:.1f}:1). "
+                                   "For overall strength, bring lower body to at least 10 sets per week.",
+                              basis=f"Upper:lower = {r:.1f}:1", suggestions=[]))
+
+    by_day = {}
+    for s in sessions:
+        by_day.setdefault(s["date"], {}).update(s["coverage"])
+    dates = sorted(by_day)
+    for a, b in zip(dates, dates[1:]):
+        if (_d(b) - _d(a)).days != 1:
+            continue
+        for g in COVERAGE_ORDER:
+            va, vb = by_day[a].get(g, 0), by_day[b].get(g, 0)
+            if va >= 4 and vb >= 4:
+                items.append(dict(level="info", title=f"{cname(g)} on consecutive days",
+                                  text=f"{a} and {b} both trained {cname(g).lower()} ({va:g} / {vb:g} sets). "
+                                       "48 hours between sessions is usually better; ignore if you feel fine.",
+                                  basis=f"Consecutive days with ≥4 {cname(g).lower()} sets", suggestions=[]))
+                break
+
+    if not any(x["level"] in ("miss", "low", "high") for x in items):
+        items.insert(0, dict(level="ok", title=f"{when}: coverage looks complete",
+                             text="Every area is within its reference range. Add load or keep the sets next week.",
+                             basis="All coverage areas within reference", suggestions=[]))
 
     order = {"miss": 0, "low": 1, "high": 2, "info": 3, "ok": 4}
     items.sort(key=lambda x: order[x["level"]])

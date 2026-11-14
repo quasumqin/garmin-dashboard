@@ -1,12 +1,14 @@
-# 素材来源与许可
+# Credits and licenses
 
-## 人体肌肉图
+**English | [中文](CREDITS.zh-CN.md)**
 
-- 来源：[MuscleMap](https://github.com/melihcolpan/MuscleMap)（SwiftUI SDK）中的
-  `Sources/MuscleMap/Data/MaleFrontPaths.swift` 与 `MaleBackPaths.swift`
-- 本仓库将其路径数据整理为 `body_paths.json`，仅用于本看板的 SVG 渲染
-- 许可证：MIT
-- 版权：Copyright © 2026 Melih Colpan
+## Body diagram
+
+- Source: [MuscleMap](https://github.com/melihcolpan/MuscleMap), files
+  `Sources/MuscleMap/Data/MaleFrontPaths.swift` and `MaleBackPaths.swift`
+- This repository stores the path data as `body_paths.json` for SVG rendering
+- License: MIT
+- Copyright © 2026 Melih Colpan
 
 MIT License
 
@@ -28,16 +30,16 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-## 动作 / 器械线稿
+## Exercise / equipment line art
 
-- 来源：[Everkinetic](https://github.com/JAlbertoGonzalez/everkinetic-data)
-  （经 [wger](https://wger.de) 图片库取得，图片元数据标注作者 Everkinetic）
-- 本仓库将其转换为 `assets/exercises/*.png`（去白边、统一尺寸）
-- 许可证：[CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/)
-- 署名：© Everkinetic
+- Source: [Everkinetic](https://github.com/JAlbertoGonzalez/everkinetic-data),
+  obtained via the [wger](https://wger.de) image library (author metadata: Everkinetic)
+- Converted to `assets/exercises/*.png` (trimmed and resized)
+- License: [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/)
+- Attribution: © Everkinetic
 
-使用这些图片时请保留署名；如对外发布衍生作品，需按 CC BY-SA 3.0 同协议共享。
+Keep the attribution when sharing. Derivative works must be released under CC BY-SA 3.0.
 
-## 图表
+## Charts
 
 - [Chart.js](https://www.chartjs.org/) — MIT
